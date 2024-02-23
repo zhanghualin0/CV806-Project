@@ -118,6 +118,7 @@ if __name__ == "__main__":
         #     )
         #     args.save_dir.mkdir(exist_ok=True, parents=True)
         #     main(args)
+ 
 
         for subdir in subdirectories:
             args.image_dir = subdir
@@ -125,14 +126,24 @@ if __name__ == "__main__":
                 subdir.parent.parent / f"blip-embs-{args.model_type}" / subdir.name
             )
             args.save_dir.mkdir(exist_ok=True, parents=True)
-            # embs computation for CIRR train dataset
-            for subsubdir in subdir.iterdir():
-                if subsubdir.is_dir():
+
+            if subdir.name == 'train':
+                for subsubdir in subdir.iterdir():
                     args.image_dir = subsubdir
                     args.save_dir = (
                         subdir.parent.parent / f"blip-embs-{args.model_type}" / subdir.name
                     )
-                    args.save_dir.mkdir(exist_ok=True, parents=True)                    
+                    args.save_dir.mkdir(exist_ok=True, parents=True)    
+                    main(args)
+            else:
+                main(args)
+ 
 
-            main(args)
+
+            
+
+   
+           
+
+            
 
