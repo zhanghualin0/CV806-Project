@@ -1,0 +1,1 @@
+python test.py test=cirr data=cirr model/ckpt=blip-l-coco 
