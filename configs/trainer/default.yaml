@@ -13,7 +13,7 @@ precision: "32-true"
 
 log_interval: 1
 print_interval: 10
-save_ckpt: all
+save_ckpt: last
 
 fabric:
   _target_: lightning.Fabric
