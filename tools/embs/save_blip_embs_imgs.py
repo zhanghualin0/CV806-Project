@@ -131,7 +131,7 @@ if __name__ == "__main__":
                 for subsubdir in subdir.iterdir():
                     args.image_dir = subsubdir
                     args.save_dir = (
-                        subdir.parent.parent / f"blip-embs-{args.model_type}" / subdir.name
+                        subdir.parent.parent / f"blip-embs-{args.model_type}" / subdir.name / subsubdir.name
                     )
                     args.save_dir.mkdir(exist_ok=True, parents=True)    
                     main(args)
