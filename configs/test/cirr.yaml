@@ -3,7 +3,7 @@ cirr:
   _target_: src.data.cirr.CIRRTestDataModule
 
   test:
-    _target_: src.test.cirr.TestCirr
+    _target_: src.test.cirr_MLP.TestCirr
 
   batch_size: ${machine.batch_size}
   num_workers: ${machine.num_workers}
