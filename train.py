@@ -60,7 +60,7 @@ def main(cfg: DictConfig):
         }
         if cfg.trainer.save_ckpt == "all":
             fabric.save(f"ckpt_{epoch}.ckpt", state)
-        elif cfg.trainer.save_ckpt == "last":
+        elif cfg.trainer.save_ckpt == "last" and epoch == cfg.trainer.max_epochs-1:
             fabric.save("ckpt_last.ckpt", state)
 
         fabric.barrier()
