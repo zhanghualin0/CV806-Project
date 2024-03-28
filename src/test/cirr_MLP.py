@@ -6,20 +6,26 @@ from pathlib import Path
 import einops
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from src.tools.files import json_dump
 
+class WeightingMLP(torch.nn.Module):
+    def __init__(self, embedding_dim):
+        super(WeightingMLP, self).__init__()
+        self.fc1 = torch.nn.Linear(embedding_dim, embedding_dim // 2)
+        self.fc2 = torch.nn.Linear(embedding_dim // 2, 3)
+        self.relu = torch.nn.ReLU()
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        return F.softmax(x, dim=-1)
 
 class TestCirr:
-    def __init__(self, embedding_dim, device):
-        self.mlp = nn.Sequential(
-            nn.Linear(embedding_dim, embedding_dim // 2),
-            nn.ReLU(),
-            nn.Linear(embedding_dim // 2, 3),
-            nn.Softmax(dim=1)
-        ).to(device)
+    def __init__(self):
+        pass
 
     @staticmethod
     @torch.no_grad()
@@ -37,13 +43,13 @@ class TestCirr:
 
             device = ref_img.device
 
-            # q: Compute image embeddings
-            ref_img_embs = model.visual_encoder(ref_img) 
+            # q: Compute the image embeddings using fine-tuned BLIP-CIRR
+            ref_img_embs = model.visual_encoder(ref_img)
             ref_img_atts = torch.ones(ref_img_embs.size()[:-1], dtype=torch.long).to(
                 device
             )
+            image_feat = model.vision_proj(ref_img_embs[:, 0, :])
 
-            # t: Compute text embeddings
             text = model.tokenizer(
                 caption,
                 padding="longest",
@@ -52,12 +58,21 @@ class TestCirr:
                 return_tensors="pt",
             ).to(device)
 
-            text_emb = model.text_encoder(text.input_ids)[0] 
+            # t: Compute the text embeddings
+            text_embs = model.text_encoder(
+                text.input_ids,
+                attention_mask=text.attention_mask,
+                return_dict=True,
+                mode="text",
+            )
+            text_feat = text_embs.last_hidden_state[:, 0, :]
+            text_feat = model.text_proj(text_feat)
 
-            # f(q, t): Compute multi-modal embeddings
             # Shift encoder
+            # f(q,t): combined multi-modal embedding 
             encoder_input_ids = text.input_ids.clone()
             encoder_input_ids[:, 0] = model.tokenizer.enc_token_id
+            
             query_embs = model.text_encoder(
                 encoder_input_ids,
                 attention_mask=text.attention_mask,
@@ -66,17 +81,12 @@ class TestCirr:
                 return_dict=True,
             )
             query_feat = query_embs.last_hidden_state[:, 0, :]
-            # query_feat = F.normalize(model.text_proj(query_feat), dim=-1)
-            # query_feats.append(query_feat.cpu())
+            query_feat = model.text_proj(query_feat)
 
-            # average of the three embeddings
-            avg_emb = (query_feat + ref_img_embs + text_emb) / 3
-
-            # Use the MLP to compute weighting: w_1*f(q,t) + w_2*q + w_3*t
-            weights = model.mlp(avg_emb.unsqueeze(0))
-            combined_emb = weights[:, 0] * query_feat + weights[:, 1] * ref_img_embs + weights[:, 2] * text_emb
-            combined_emb = F.normalize(model.text_proj(combined_emb), dim=-1)
-            query_feats.append(combined_emb.cpu())
+            # average of three embds
+            query_feat = (query_feat + image_feat + text_feat) / 3
+            query_feat = F.normalize(query_feat, dim=-1)
+            query_feats.append(query_feat.cpu())
 
             # Encode the target image
             tar_img_feats.append(tar_feat.cpu())
