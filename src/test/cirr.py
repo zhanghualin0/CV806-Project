@@ -96,7 +96,7 @@ class TestCirr:
             # Create a mapping from target_id to column index for faster lookup
             tarid2index = {tar_id: j for j, tar_id in enumerate(id2emb.keys())}
 
-            # Update the similarity matrix based on the condition
+            # Update the similarity matrix based on the condition:
             for pair_id, query_feat in zip(pair_ids, query_feats):
                 que_id = data_loader.dataset.pairid2ref[pair_id]
                 if que_id in tarid2index:

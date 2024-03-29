@@ -10,19 +10,6 @@ import torch.nn.functional as F
 
 from src.tools.files import json_dump
 
-class WeightingMLP(torch.nn.Module):
-    def __init__(self, embedding_dim):
-        super(WeightingMLP, self).__init__()
-        self.fc1 = torch.nn.Linear(embedding_dim, embedding_dim // 2)
-        self.fc2 = torch.nn.Linear(embedding_dim // 2, 3)
-        self.relu = torch.nn.ReLU()
-
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.fc2(x)
-        return F.softmax(x, dim=-1)
-
 class TestCirr:
     def __init__(self):
         pass
@@ -126,7 +113,9 @@ class TestCirr:
             # Create a mapping from target_id to column index for faster lookup
             tarid2index = {tar_id: j for j, tar_id in enumerate(id2emb.keys())}
 
-            # Update the similarity matrix based on the condition
+            # Update the similarity matrix based on the condition:  
+            # if the query ID exists in the target IDs, the corresponding similarity score is set to a large negative value (-100) 
+            # to exclude it from the retrieval results.
             for pair_id, query_feat in zip(pair_ids, query_feats):
                 que_id = data_loader.dataset.pairid2ref[pair_id]
                 if que_id in tarid2index:
@@ -149,14 +138,17 @@ class TestCirr:
 
             assert len(sims_q2t) == len(pair_ids)
             for pair_id, query_sims in zip(pair_ids, sims_q2t):
+                # sorts the similarity scores for each query 
                 sorted_indices = np.argsort(query_sims)[::-1]
-
+                # retrieves the top-50 most similar target images
                 query_id_recalls = list(target_imgs[sorted_indices][:50])
                 query_id_recalls = [
                     str(data_loader.dataset.int2id[x]) for x in query_id_recalls
                 ]
+                # Store the retrieval results, keys: pair IDs and values: lists of retrieved image IDs
                 recalls[str(pair_id)] = query_id_recalls
 
+                # Subset with top-3 retrieved image IDs
                 members = data_loader.dataset.pairid2members[pair_id]
                 query_id_recalls_subset = [
                     target
