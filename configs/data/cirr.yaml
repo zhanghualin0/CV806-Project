@@ -18,5 +18,7 @@ img_dirs:
 emb_dirs:
   train: ${data.dataset_dir}/blip-embs-large/train
   val: ${data.dataset_dir}/blip-embs-large/dev
+  # train: ${data.dataset_dir}/blip2-embs/train
+  # val: ${data.dataset_dir}/blip2-embs/dev
 
 image_size: 384

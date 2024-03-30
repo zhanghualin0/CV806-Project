@@ -48,10 +48,14 @@ def main(args):
         sample = {"image": images}
         sample["image"] = sample["image"].squeeze(1)
         features_image = model.extract_features(sample, mode="image")
+        features_image = F.normalize(model.vision_proj(features_image.image_embeds[:, 0, :]), dim=-1).cpu()
 
-        for img_feat, image_id in zip(features_image.image_embeds, image_ids):
+        # print(features_image.image_embeds.shape)
+        # print(type(features_image))
+
+        for img_feat, image_id in zip(features_image, image_ids):
             # img_feat = img_feat.squeeze(0)  # Remove batch dimension if any
-            img_feat = img_feat.to(torch.float16)
+            # img_feat = img_feat.to(torch.float16)
             torch.save(img_feat, os.path.join(args.save_dir, f"{image_id}.pth"))
 
 if __name__ == "__main__":

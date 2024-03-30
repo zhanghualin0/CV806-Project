@@ -85,6 +85,9 @@ def main(args):
         img_embs = model.visual_encoder(imgs)
         img_feats = F.normalize(model.vision_proj(img_embs[:, 0, :]), dim=-1).cpu()
 
+        # print(img_feats.shape)
+        # print(type(img_feats))
+
         for img_feat, video_id in zip(img_feats, video_ids):
             torch.save(img_feat, args.save_dir / f"{video_id}.pth")
 
