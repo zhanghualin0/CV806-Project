@@ -59,7 +59,6 @@ class Blip2Base(nn.Module):
         self.Qformer, self.query_tokens = init_Qformer(
             num_query_token, self.visual_encoder.num_features, cross_attention_freq
         )
-
         self.tokenizer = init_tokenizer()
         self.Qformer.resize_token_embeddings(len(self.tokenizer))
         state_dict = self.Qformer.state_dict()

@@ -89,6 +89,7 @@ class BLIP2Cir(nn.Module):
                 image_embeds_frozen = self.ln_vision(self.visual_encoder(ref_image))
             
         image_embeds_frozen = image_embeds_frozen.float()
+        # print("imae_embed size:", image_embeds_frozen.shape) --> torch.Size([256, 730, 1408])
         image_atts = torch.ones(image_embeds_frozen.size()[:-1], dtype=torch.long).to(device)
         query_tokens = self.query_tokens.expand(image_embeds_frozen.shape[0], -1, -1)
         query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(device)
@@ -105,9 +106,9 @@ class BLIP2Cir(nn.Module):
             return_dict=True,
         )
         multimodal_embeds = output.last_hidden_state[:, 0, :]  
-        # print("ssssssssizeeeeee", multimodal_embeds.shape)
+        # print("ssssssssizeeeeee", multimodal_embeds.shape)   --> 768
 
-        # print("hidden size", self.Qformer.config.hidden_size)
+        # print("hidden size", self.Qformer.config.hidden_size) --> 768
 
         multimodal_embeds = F.normalize(self.text_proj(multimodal_embeds), dim=-1)     
         # print("ssssssssizeeeeee", multimodal_embeds.shape) 
