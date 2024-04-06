@@ -21,30 +21,143 @@ from lavis.common.utils import is_url
 from lavis.common.logger import MetricLogger
 from lavis.models.base_model import BaseModel
 from lavis.models.blip2_models.Qformer import BertConfig, BertLMHeadModel
-from lavis.models.eva_vit import create_eva_vit_g
+# from lavis.models.eva_vit import create_eva_vit_g
+from lavis.models.eva_vit import VisionTransformer
 from lavis.models.clip_vit import create_clip_vit_L
 from transformers import BertTokenizer
+from functools import partial
 
 
-class Blip2Base(BaseModel):
-    @classmethod
-    def init_tokenizer(cls, truncation_side="right"):
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", truncation_side=truncation_side)
-        tokenizer.add_special_tokens({"bos_token": "[DEC]"})
-        return tokenizer
+class Blip2Base(nn.Module):
+    def __init__(
+        self,
+        vit_model="eva_clip_g",
+        img_size=224,
+        drop_path_rate=0,
+        use_grad_checkpoint=False,
+        vit_precision="fp16",
+        freeze_vit=True,
+        num_query_token=32,
+        cross_attention_freq=2,
+        embed_dim=256,
+        max_txt_len=32,
+    ):
+        super().__init__()
 
-    def maybe_autocast(self, dtype=torch.float16):
-        # if on cpu, don't use autocast
-        # if on gpu, use autocast with dtype if provided, otherwise use torch.float16
-        enable_autocast = self.device != torch.device("cpu")
+        self.visual_encoder, self.ln_vision = create_eva_vit_g(
+            vit_model,img_size,drop_path_rate,use_grad_checkpoint,vit_precision
+        )
 
-        if enable_autocast:
-            return torch.cuda.amp.autocast(dtype=dtype)
-        else:
-            return contextlib.nullcontext()
+        self.freeze_vit = freeze_vit
+        if self.freeze_vit:
+            for name, param in self.visual_encoder.named_parameters():
+                param.requires_grad = False
+            self.visual_encoder = self.visual_encoder.eval()
+            self.visual_encoder.train = disabled_train
+            logging.info("freeze vision encoder")
 
-    @classmethod
-    def init_Qformer(cls, num_query_token, vision_width, cross_attention_freq=2):
+        self.Qformer, self.query_tokens = init_Qformer(
+            num_query_token, self.visual_encoder.num_features, cross_attention_freq
+        )
+
+        self.tokenizer = init_tokenizer()
+        self.Qformer.resize_token_embeddings(len(self.tokenizer))
+        state_dict = self.Qformer.state_dict()
+        for name, param in self.Qformer.named_parameters():
+            if "_query" in name:
+                key_orig = name.replace("_query", "")
+                param.data.copy_(state_dict[key_orig])
+
+        self.vision_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
+        self.text_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
+
+        self.itm_head = nn.Linear(self.Qformer.config.hidden_size, 2)
+
+    def forward(self, image, caption, mode):
+        assert mode in [
+            "image",
+            "text",
+            "multimodal",
+        ], "mode must be one of 'image', 'text', 'multimodal'"
+
+        if mode == "image":
+            # return query features
+            image_embeds_frozen = self.ln_vision(self.visual_encoder(image))
+            image_embeds_frozen = image_embeds_frozen.float()
+            image_atts = torch.ones(image_embeds_frozen.size()[:-1], dtype=torch.long).to(self.device)
+            query_tokens = self.query_tokens.expand(image_embeds_frozen.shape[0], -1, -1)
+
+            query_output = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=image_embeds_frozen,
+                encoder_attention_mask=image_atts,
+                return_dict=True,
+            )
+            return query_output.last_hidden_state
+
+        elif mode == "text":
+            # return text features
+            text = self.tokenizer(caption, return_tensors="pt", padding=True).to(self.device)
+
+            text_output = self.Qformer.bert(
+                text.input_ids,
+                attention_mask=text.attention_mask,
+                return_dict=True,
+            )
+            return text_output.last_hidden_state
+
+        elif mode == "multimodal":
+            # return multimodel query features
+            image_embeds_frozen = self.ln_vision(self.visual_encoder(image))
+            image_embeds_frozen = image_embeds_frozen.float()
+            image_atts = torch.ones(image_embeds_frozen.size()[:-1], dtype=torch.long).to(self.device)
+            query_tokens = self.query_tokens.expand(image_embeds_frozen.shape[0], -1, -1)
+            query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(self.device)
+
+            text = self.tokenizer(caption, return_tensors="pt", padding=True).to(self.device)
+            attention_mask = torch.cat([query_atts, text.attention_mask], dim=1)
+
+            output = self.Qformer.bert(
+                text.input_ids,
+                query_embeds=query_tokens,
+                attention_mask=attention_mask,
+                encoder_hidden_states=image_embeds_frozen,
+                encoder_attention_mask=image_atts,
+                return_dict=True,
+            )
+            return output.last_hidden_state
+
+def disabled_train(self, mode=True):
+    """Overwrite model.train with this function to make sure train/eval mode
+    does not change anymore."""
+    return self
+
+def init_tokenizer(truncation_side="right"):
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", truncation_side=truncation_side)
+    tokenizer.add_special_tokens({"bos_token": "[DEC]"})
+    return tokenizer
+    
+def load_checkpoint(model, url_or_filename):
+    if is_url(url_or_filename):
+        cached_file = download_cached_file(
+            url_or_filename, check_hash=False, progress=True
+        )
+        checkpoint = torch.load(cached_file, map_location="cpu")
+    elif os.path.isfile(url_or_filename):
+        checkpoint = torch.load(url_or_filename, map_location="cpu")
+    else:
+        raise RuntimeError("checkpoint url or path is invalid")
+
+    state_dict = checkpoint["model"]
+
+    msg = model.load_state_dict(state_dict, strict=False)
+
+    # logging.info("Missing keys {}".format(msg.missing_keys))
+    logging.info("load checkpoint from %s" % url_or_filename)
+
+    return model, msg
+
+def init_Qformer(num_query_token, vision_width, cross_attention_freq=2):
         encoder_config = BertConfig.from_pretrained("bert-base-uncased")
         encoder_config.encoder_width = vision_width
         # insert cross-attention layer every other block
@@ -60,135 +173,68 @@ class Blip2Base(BaseModel):
         query_tokens.data.normal_(mean=0.0, std=encoder_config.initializer_range)
         return Qformer, query_tokens
 
-    def init_vision_encoder(
-        self, model_name, img_size, drop_path_rate, use_grad_checkpoint, precision
-    ):
-        assert model_name in [
-            "eva_clip_g",
-            "eva2_clip_L",
-            "clip_L",
-        ], "vit model must be eva_clip_g, eva2_clip_L or clip_L"
-        if model_name == "eva_clip_g":
-            visual_encoder = create_eva_vit_g(
-                img_size, drop_path_rate, use_grad_checkpoint, precision
-            )
-#         elif model_name == "eva2_clip_L":
-#             visual_encoder = create_eva2_vit_L(
-#                 img_size, drop_path_rate, use_grad_checkpoint, precision
-#             )
-        elif model_name == "clip_L":
-            visual_encoder = create_clip_vit_L(img_size, use_grad_checkpoint, precision)
-        ln_vision = LayerNorm(visual_encoder.num_features)
-        self.vit_name = model_name
-        return visual_encoder, ln_vision
+# def init_vision_encoder(
+#     model_name, img_size, drop_path_rate, use_grad_checkpoint, precision
+# ):
+#     assert model_name in [
+#         "eva_clip_g",
+#         "eva2_clip_L",
+#         "clip_L",
+#     ], "vit model must be eva_clip_g, eva2_clip_L or clip_L"
+#     if model_name == "eva_clip_g":
+#         visual_encoder = create_eva_vit_g(
+#             img_size, drop_path_rate, use_grad_checkpoint, precision
+#         )
+# #         elif model_name == "eva2_clip_L":
+# #             visual_encoder = create_eva2_vit_L(
+# #                 img_size, drop_path_rate, use_grad_checkpoint, precision
+# #             )
+#     elif model_name == "clip_L":
+#         visual_encoder = create_clip_vit_L(img_size, use_grad_checkpoint, precision)
+#     ln_vision = LayerNorm(visual_encoder.num_features)
+#     return visual_encoder, ln_vision
 
-    def load_from_pretrained(self, url_or_filename):
-        if is_url(url_or_filename):
-            cached_file = download_cached_file(
-                url_or_filename, check_hash=False, progress=True
-            )
-            checkpoint = torch.load(cached_file, map_location="cpu")
-        elif os.path.isfile(url_or_filename):
-            checkpoint = torch.load(url_or_filename, map_location="cpu")
-        else:
-            raise RuntimeError("checkpoint url or path is invalid")
 
-        state_dict = checkpoint["model"]
+def create_eva_vit_g(model_name, img_size,drop_path_rate=0.4,use_checkpoint=False,precision="fp16"):
+    assert model_name in [
+        "eva_clip_g",
+        "eva2_clip_L",
+        "clip_L",
+    ], "vit model must be eva_clip_g, eva2_clip_L or clip_L"
+    if model_name == "eva_clip_g":
+        visual_encoder = VisionTransformer(
+            img_size=img_size,
+            patch_size=14,
+            use_mean_pooling=False,
+            embed_dim=1408,
+            depth=39,
+            num_heads=1408//88,
+            mlp_ratio=4.3637,
+            qkv_bias=True,
+            drop_path_rate=drop_path_rate,
+            use_checkpoint=use_checkpoint,
+        )  
+    if precision == "fp16":
+        convert_weights_to_fp16(visual_encoder)
+    ln_vision = LayerNorm(visual_encoder.num_features)
+    return visual_encoder, ln_vision
 
-        msg = self.load_state_dict(state_dict, strict=False)
+def convert_weights_to_fp16(model: nn.Module):
+    """Convert applicable model parameters to fp16"""
 
-        # logging.info("Missing keys {}".format(msg.missing_keys))
-        logging.info("load checkpoint from %s" % url_or_filename)
+    def _convert_weights_to_fp16(l):
+        if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
+            l.weight.data = l.weight.data.half()
+            if l.bias is not None:
+                l.bias.data = l.bias.data.half()
 
-        return msg
+#         if isinstance(l, (nn.MultiheadAttention, Attention)):
+#             for attr in [*[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]], "in_proj_bias", "bias_k", "bias_v"]:
+#                 tensor = getattr(l, attr)
+#                 if tensor is not None:
+#                     tensor.data = tensor.data.half()
 
-    def get_optimizer_params(self, weight_decay, lr_scale=1):
-
-        vit_num_layers = self.visual_encoder.get_num_layer()
-        lr_scales = list(lr_scale ** (vit_num_layers + 1 - i) for i in range(vit_num_layers + 2))
-
-        parameter_group_names = {}
-        parameter_group_vars = {}
-
-        for name, param in self.named_parameters():
-            if not param.requires_grad:
-                continue  # frozen weights
-            if len(param.shape) == 1 or name.endswith(".bias"):
-                group_name = "no_decay"
-                this_weight_decay = 0.
-            else:
-                group_name = "decay"
-                this_weight_decay = weight_decay
-            if 'visual_encoder' in name:
-                layer_id = self.visual_encoder.get_num_layer(name.replace('visual_encoder.',''))
-                group_name = "vit_layer_%d_%s" % (layer_id, group_name)
-            else:
-                layer_id = None
-
-            if group_name not in parameter_group_names:
-                if layer_id is not None:
-                    scale = lr_scales[layer_id]
-                else:
-                    scale = 1
-                parameter_group_names[group_name] = {
-                    "weight_decay": this_weight_decay,
-                    "params": [],
-                    "lr_scale": scale
-                }
-                parameter_group_vars[group_name] = {
-                    "weight_decay": this_weight_decay,
-                    "params": [],
-                    "lr_scale": scale
-                }
-            parameter_group_vars[group_name]["params"].append(param)
-            parameter_group_names[group_name]["params"].append(name)
-        # import json
-        # print("Param groups = %s" % json.dumps(parameter_group_names, indent=2))
-        optim_params = list(parameter_group_vars.values())
-        return optim_params
-
-    def _lemmatize(self, answers):
-        def apply(answer):
-            doc = self.lemmatizer(answer)
-
-            words = []
-            for token in doc:
-                if token.pos_ in ["NOUN", "VERB"]:
-                    words.append(token.lemma_)
-                else:
-                    words.append(token.text)
-            answer = " ".join(words)
-
-            return answer
-
-        return [apply(answer) for answer in answers]
-
-    @property
-    def lemmatizer(self):
-        if self._lemmatizer is None:
-            try:
-                import spacy
-
-                self._lemmatizer = spacy.load("en_core_web_sm")
-            except ImportError:
-                logging.error(
-                    """
-                    Please install spacy and en_core_web_sm model to apply lemmatization.
-                    python -m spacy download en_core_web_sm
-                    OR
-                    import spacy.cli
-                    spacy.cli.download("en_core_web_sm")
-                    """
-                )
-                exit(1)
-
-        return self._lemmatizer
-
-def disabled_train(self, mode=True):
-    """Overwrite model.train with this function to make sure train/eval mode
-    does not change anymore."""
-    return self
-
+    model.apply(_convert_weights_to_fp16)
 
 class LayerNorm(nn.LayerNorm):
     """Subclass torch's LayerNorm to handle fp16."""
@@ -197,7 +243,6 @@ class LayerNorm(nn.LayerNorm):
         orig_type = x.dtype
         ret = super().forward(x.type(torch.float32))
         return ret.type(orig_type)
-
 
 def compute_sim_matrix(model, data_loader, **kwargs):
     k_test = kwargs.pop("k_test")

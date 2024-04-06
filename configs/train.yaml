@@ -5,7 +5,8 @@ hydra:
     chdir: true
 
 # Global configurations shared between different modules
-experiment: tv-${model.model.train_vit}_loss-${model.model.loss.name}_lr-${model.optimizer.lr}
+# experiment: tv-${model.model.train_vit}_loss-${model.model.loss.name}_lr-${model.optimizer.lr}
+experiment: tv-loss-${model.model.loss.name}_lr-${model.optimizer.lr}
 run_name: base
 
 seed: 1234

@@ -1,2 +1,2 @@
 
-python train.py model=blip2 data=cirr model/ckpt=blip2-pretrained 
+python train.py test=cirr_blip2 data=cirr model=blip2 model/ckpt=blip2 

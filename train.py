@@ -3,6 +3,7 @@ import shutil
 import time
 
 import hydra
+import torch
 import lightning as L
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -87,6 +88,7 @@ def main(cfg: DictConfig):
 def train(model, train_loader, optimizer, fabric, epoch, cfg):
     model.train()
 
+    # with torch.set_grad_enabled(False):
     for batch_idx, batch in enumerate(train_loader):
         optimizer.zero_grad()
         loss = model(batch, fabric)
