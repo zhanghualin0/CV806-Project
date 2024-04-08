@@ -12,7 +12,7 @@ project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
 sys.path.append(project_root)
 
 from src.data.embs import ImageDataset
-from src.model.blip2_embs import blip2_embs
+from src.model.blip2_embs import blip2_embs # type: ignore
 # from src.model.blip_embs import blip_embs
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

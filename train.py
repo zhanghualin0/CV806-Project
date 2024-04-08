@@ -12,6 +12,8 @@ from src.test.utils import evaluate
 from src.tools.files import json_dump
 from src.tools.utils import calculate_model_params
 
+import multiprocessing as mp
+
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
 def main(cfg: DictConfig):
@@ -110,4 +112,5 @@ def train(model, train_loader, optimizer, fabric, epoch, cfg):
 
 
 if __name__ == "__main__":
+    mp.set_start_method('spawn', force=True)
     main()
