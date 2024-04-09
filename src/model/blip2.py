@@ -204,29 +204,103 @@ def init_Qformer(num_query_token, vision_width, cross_attention_freq=2):
 #     return visual_encoder, ln_vision
 
 
-def create_eva_vit_g(model_name, img_size,drop_path_rate=0.4,use_checkpoint=False,precision="fp16"):
+# def create_eva_vit_g(model_name, img_size,drop_path_rate=0.4,use_checkpoint=False,precision="fp16"):
+#     assert model_name in [
+#         "eva_clip_g",
+#         "eva2_clip_L",
+#         "clip_L",
+#     ], "vit model must be eva_clip_g, eva2_clip_L or clip_L"
+#     if model_name == "eva_clip_g":
+#         visual_encoder = VisionTransformer(
+#             img_size=img_size,
+#             patch_size=14,
+#             use_mean_pooling=False,
+#             embed_dim=1408,
+#             depth=39,
+#             num_heads=1408//88,
+#             mlp_ratio=4.3637,
+#             qkv_bias=True,
+#             drop_path_rate=drop_path_rate,
+#             use_checkpoint=use_checkpoint,
+#         )  
+#     if precision == "fp16":
+#         convert_weights_to_fp16(visual_encoder)
+#     ln_vision = LayerNorm(visual_encoder.num_features)
+#     return visual_encoder, ln_vision
+
+def init_vision_encoder(
+    model_name, img_size, drop_path_rate, use_grad_checkpoint, precision
+):
     assert model_name in [
         "eva_clip_g",
         "eva2_clip_L",
         "clip_L",
     ], "vit model must be eva_clip_g, eva2_clip_L or clip_L"
     if model_name == "eva_clip_g":
-        visual_encoder = VisionTransformer(
-            img_size=img_size,
-            patch_size=14,
-            use_mean_pooling=False,
-            embed_dim=1408,
-            depth=39,
-            num_heads=1408//88,
-            mlp_ratio=4.3637,
-            qkv_bias=True,
-            drop_path_rate=drop_path_rate,
-            use_checkpoint=use_checkpoint,
-        )  
-    if precision == "fp16":
-        convert_weights_to_fp16(visual_encoder)
+        visual_encoder = create_eva_vit_g(
+            img_size, drop_path_rate, use_grad_checkpoint, precision
+        )
+#         elif model_name == "eva2_clip_L":
+#             visual_encoder = create_eva2_vit_L(
+#                 img_size, drop_path_rate, use_grad_checkpoint, precision
+#             )
+    elif model_name == "clip_L":
+        visual_encoder = create_clip_vit_L(img_size, use_grad_checkpoint, precision)
     ln_vision = LayerNorm(visual_encoder.num_features)
+    # self.vit_name = model_name
     return visual_encoder, ln_vision
+
+def interpolate_pos_embed(model, checkpoint_model):
+    if 'pos_embed' in checkpoint_model:
+        pos_embed_checkpoint = checkpoint_model['pos_embed'].float()
+        embedding_size = pos_embed_checkpoint.shape[-1]
+        num_patches = model.patch_embed.num_patches
+        num_extra_tokens = model.pos_embed.shape[-2] - num_patches
+        # height (== width) for the checkpoint position embedding
+        orig_size = int((pos_embed_checkpoint.shape[-2] - num_extra_tokens) ** 0.5)
+        # height (== width) for the new position embedding
+        new_size = int(num_patches ** 0.5)
+        # class_token and dist_token are kept unchanged
+        if orig_size != new_size:
+            print("Position interpolate from %dx%d to %dx%d" % (orig_size, orig_size, new_size, new_size))
+            extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
+            # only the position tokens are interpolated
+            pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
+            pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
+            pos_tokens = torch.nn.functional.interpolate(
+                pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
+            pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
+            new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
+            checkpoint_model['pos_embed'] = new_pos_embed
+
+def create_eva_vit_g(img_size=224,drop_path_rate=0.4,use_checkpoint=False,precision="fp16"):
+    model = VisionTransformer(
+        img_size=img_size,
+        patch_size=14,
+        use_mean_pooling=False,
+        embed_dim=1408,
+        depth=39,
+        num_heads=1408//88,
+        mlp_ratio=4.3637,
+        qkv_bias=True,
+        drop_path_rate=drop_path_rate,
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        use_checkpoint=use_checkpoint,
+    )  
+    url = "https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/eva_vit_g.pth"
+    cached_file = download_cached_file(
+        url, check_hash=False, progress=True
+    )
+    state_dict = torch.load(cached_file, map_location="cpu")    
+    interpolate_pos_embed(model,state_dict)
+    
+    incompatible_keys = model.load_state_dict(state_dict, strict=False)
+#     print(incompatible_keys)
+    
+    if precision == "fp16":
+#         model.to("cuda") 
+        convert_weights_to_fp16(model)
+    return model
 
 def convert_weights_to_fp16(model: nn.Module):
     """Convert applicable model parameters to fp16"""

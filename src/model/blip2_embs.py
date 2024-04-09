@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import logging
 
-from src.model.blip2 import load_checkpoint, init_Qformer, init_tokenizer, create_eva_vit_g
+from src.model.blip2 import load_checkpoint, init_Qformer, init_tokenizer, init_vision_encoder
 from lavis.models.blip2_models.blip2 import (
     disabled_train,
 )
@@ -27,7 +27,7 @@ class BLIP2Embs(nn.Module):
     ):
         super().__init__()
 
-        self.visual_encoder, self.ln_vision = create_eva_vit_g(
+        self.visual_encoder, self.ln_vision = init_vision_encoder(
             vit_model,img_size,drop_path_rate,use_grad_checkpoint,vit_precision
         )
 
@@ -45,11 +45,11 @@ class BLIP2Embs(nn.Module):
 
         self.tokenizer = init_tokenizer()
         self.Qformer.resize_token_embeddings(len(self.tokenizer))
-        # state_dict = self.Qformer.state_dict()
-        # for name, param in self.Qformer.named_parameters():
-        #     if "_query" in name:
-        #         key_orig = name.replace("_query", "")
-        #         param.data.copy_(state_dict[key_orig])
+        state_dict = self.Qformer.state_dict()
+        for name, param in self.Qformer.named_parameters():
+            if "_query" in name:
+                key_orig = name.replace("_query", "")
+                param.data.copy_(state_dict[key_orig])
 
         self.vision_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
         self.text_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
