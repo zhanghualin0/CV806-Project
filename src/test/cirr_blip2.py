@@ -55,9 +55,13 @@ class TestCirr:
                 model.device
             )
 
-            text = model.tokenizer(caption, return_tensors="pt", padding=True).to(
-                model.device
-            )
+            text = model.tokenizer(
+                caption,
+                padding="max_length",
+                truncation=True,
+                max_length=model.max_txt_len,
+                return_tensors="pt",
+            ).to(device)
             attention_mask = torch.cat([query_atts, text.attention_mask], dim=1)
 
             output = model.Qformer.bert(

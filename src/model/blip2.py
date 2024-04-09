@@ -126,6 +126,16 @@ class Blip2Base(nn.Module):
             )
             return output.last_hidden_state
 
+def maybe_autocast(model, dtype=torch.float16):
+    # if on cpu, don't use autocast
+    # if on gpu, use autocast with dtype if provided, otherwise use torch.float16
+    enable_autocast = model.device != torch.device("cpu")
+
+    if enable_autocast:
+        return torch.cuda.amp.autocast(dtype=dtype)
+    else:
+        return contextlib.nullcontext()
+
 def disabled_train(self, mode=True):
     """Overwrite model.train with this function to make sure train/eval mode
     does not change anymore."""

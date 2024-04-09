@@ -55,7 +55,7 @@ def main(args):
         imgs = imgs.to(device)
         with torch.autocast(device_type=device.type, dtype=torch.float16):
             img_embs = model.ln_vision(model.visual_encoder(imgs))
-
+        
         img_atts = torch.ones(img_embs.size()[:-1], dtype=torch.long).to(imgs.device)
 
         query_tokens = model.query_tokens.expand(img_embs.shape[0], -1, -1)
@@ -68,7 +68,9 @@ def main(args):
             return_dict=True,
         )
 
-        img_feats = F.normalize(model.vision_proj(query_output.last_hidden_state[:, 0, :]), dim=-1)
+        img_feats = F.normalize(model.vision_proj(query_output.last_hidden_state[:, 0, :]), dim=-1).cpu()
+        # print(img_feats.shape)
+        # print(type(img_feats))
 
         for img_feat, video_id in zip(img_feats, video_ids):
             torch.save(img_feat, args.save_dir / f"{video_id}.pth")
