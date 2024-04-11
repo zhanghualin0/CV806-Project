@@ -23,7 +23,7 @@ from lavis.models.base_model import BaseModel
 from lavis.models.blip2_models.Qformer import BertConfig, BertLMHeadModel
 # from lavis.models.eva_vit import create_eva_vit_g
 from lavis.models.eva_vit import VisionTransformer
-from lavis.models.clip_vit import create_clip_vit_L
+# from lavis.models.clip_vit import create_clip_vit_L
 from transformers import BertTokenizer
 from functools import partial
 
@@ -35,8 +35,7 @@ class Blip2Base(nn.Module):
         img_size=224,
         drop_path_rate=0,
         use_grad_checkpoint=False,
-        # vit_precision="fp16",
-        vit_precision="fp32",
+        vit_precision="fp16",
         freeze_vit=True,
         num_query_token=32,
         cross_attention_freq=2,

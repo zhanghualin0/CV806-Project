@@ -8,7 +8,7 @@ import lightning as L
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
-from src.test.utils import evaluate
+from src.test.utils import evaluate, evaluate_blip2
 from src.tools.files import json_dump
 from src.tools.utils import calculate_model_params
 
@@ -53,7 +53,11 @@ def main(cfg: DictConfig):
 
         if cfg.val:
             fabric.print("Evaluate")
-            evaluate(model, loader_val, fabric=fabric)
+            if cfg.model.modelname == "blip2":
+                evaluate_blip2(model, loader_val, fabric=fabric)
+            else:
+                evaluate(model, loader_val, fabric=fabric) 
+            
 
         state = {
             "epoch": epoch,
