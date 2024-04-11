@@ -54,6 +54,7 @@ def main(cfg: DictConfig):
         if cfg.val:
             fabric.print("Evaluate")
             if cfg.model.modelname == "blip2":
+                fabric.print("Evaluate BLIP2")
                 evaluate_blip2(model, loader_val, fabric=fabric)
             else:
                 evaluate(model, loader_val, fabric=fabric) 
