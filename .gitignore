@@ -7,4 +7,4 @@ bert-base-uncased/
 
 delete*
 __pycache__/
-environment.yaml
+# environment.yaml
