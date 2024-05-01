@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch import nn
 
 # from src.model.blip2_qformer import Blip2Qformer 
-from src.model.blip2 import load_checkpoint, init_Qformer, init_tokenizer, create_eva_vit_g
+from src.model.blip2 import load_checkpoint, init_Qformer, init_tokenizer, init_vision_encoder
 from lavis.models.blip2_models.blip2 import (
     Blip2Base,
     compute_sim_matrix,
@@ -34,8 +34,8 @@ class BLIP2Cir(nn.Module):
 
         self.loss = loss
 
-        self.visual_encoder, self.ln_vision = create_eva_vit_g(
-            vit_model,img_size,drop_path_rate,use_grad_checkpoint,vit_precision
+        self.visual_encoder, self.ln_vision = init_vision_encoder(
+            vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
         )
 
         self.freeze_vit = freeze_vit
@@ -75,12 +75,6 @@ class BLIP2Cir(nn.Module):
 
         device = ref_image.device
 
-        # if self.freeze_vit:
-        #     with torch.no_grad():
-        #         image_embeds_frozen = self.ln_vision(self.visual_encoder(ref_image))
-        # else:
-        #     image_embeds_frozen = self.ln_vision(self.visual_encoder(ref_image))
-
         with torch.autocast(device_type=device.type, dtype=torch.float16):
             if self.freeze_vit:
                 with torch.no_grad():
@@ -89,12 +83,18 @@ class BLIP2Cir(nn.Module):
                 image_embeds_frozen = self.ln_vision(self.visual_encoder(ref_image))
             
         image_embeds_frozen = image_embeds_frozen.float()
-        # print("imae_embed size:", image_embeds_frozen.shape) --> torch.Size([256, 730, 1408])
+        # print("image_embed size:", image_embeds_frozen.shape) --> torch.Size([256, 730, 1408])
         image_atts = torch.ones(image_embeds_frozen.size()[:-1], dtype=torch.long).to(device)
         query_tokens = self.query_tokens.expand(image_embeds_frozen.shape[0], -1, -1)
         query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(device)
 
-        text = self.tokenizer(caption, return_tensors="pt", padding=True).to(device)
+        text = self.tokenizer(
+            caption,
+            padding="max_length",
+            truncation=True,
+            max_length=self.max_txt_len,
+            return_tensors="pt",
+        ).to(device)
         attention_mask = torch.cat([query_atts, text.attention_mask], dim=1)
 
         output = self.Qformer.bert(
