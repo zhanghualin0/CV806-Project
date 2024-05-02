@@ -23,6 +23,6 @@ emb_dirs:
   train: ${data.dataset_dir}/blip2-embs-coco/train
   val: ${data.dataset_dir}/blip2-embs-coco/dev
 
-# image_size: 384 # blip-large
-imge_size: 224 # blip2-pretrain
+image_size: 384 # blip-large
+# image_size: 224 # blip2-pretrain
 # image_size: 364 # blip2-coco

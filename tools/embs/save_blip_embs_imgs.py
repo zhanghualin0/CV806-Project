@@ -42,9 +42,12 @@ def get_blip_config(model="base"):
         config["vit_ckpt_layer"] = 4
         config["init_lr"] = 1e-5
     elif model == "large":
+        # config[
+        #     "pretrained"
+        # ] = "https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_large_retrieval_coco.pth"
         config[
             "pretrained"
-        ] = "https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_large_retrieval_coco.pth"
+        ] = "/home/hualin/CoVR/outputs/cirr/blip-large/blip-l-coco/tv-False_loss-hnnce_lr-0.0001/base/ckpt_5.ckpt"
         config["vit"] = "large"
         config["batch_size_train"] = 16
         config["batch_size_test"] = 32
@@ -67,7 +70,7 @@ def main(args):
         image_dir=args.image_dir,
         img_ext=args.img_ext,
         save_dir=args.save_dir,
-        transfrom=transform,
+        transform=transform,
     )
 
     loader = torch.utils.data.DataLoader(
