@@ -35,7 +35,7 @@ class ImageDataset(Dataset):
         self.img_pths = self.image_dir.glob(f"*.{img_ext}")
         self.id2pth = {img_pth.stem: img_pth for img_pth in self.img_pths}
         self.video_ids = list(self.id2pth.keys())
-        self.tranform = transform
+        self.transform = transform
 
         if save_dir is not None:
             save_dir = Path(save_dir)
@@ -57,7 +57,9 @@ class ImageDataset(Dataset):
 
         img_pth = self.id2pth[video_id]
         img = Image.open(img_pth).convert("RGB")
-        img = self.transform(img)
+        if self.transform:
+            print("applying transform")
+            img = self.transform(img)
 
         return img, video_id
 
