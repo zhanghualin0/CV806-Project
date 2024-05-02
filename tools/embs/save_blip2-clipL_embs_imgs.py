@@ -24,7 +24,7 @@ normalize = transforms.Normalize(
 )
 transform = transforms.Compose(
     [
-        transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC), # adapt to BLIP2-clip_L
+        transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC), # adapt to BLIP2-COCO
         transforms.ToTensor(),
         normalize,
     ]
@@ -49,8 +49,8 @@ def main(args):
 
     print("Creating model")
     model = blip2_embs(
-        pretrained="https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/blip2_pretrained.pth",
-        vit_model="eva_clip_g",
+        pretrained="https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/blip2_pretrained_vitL.pth",
+        vit_model="clip_L",
         img_size=224,
         drop_path_rate=0,
         use_grad_checkpoint=False,
@@ -63,13 +63,14 @@ def main(args):
     )
 
     model = model.to(device)
+    model = model.to(dtype=torch.float16)
     model.eval()
 
     for imgs, video_ids in tqdm(loader):
         imgs = imgs.to(device)
         with torch.autocast(device_type=device.type, dtype=torch.float16):
             img_embs = model.ln_vision(model.visual_encoder(imgs))
-        
+
         img_atts = torch.ones(img_embs.size()[:-1], dtype=torch.long).to(imgs.device)
 
         query_tokens = model.query_tokens.expand(img_embs.shape[0], -1, -1)
@@ -101,7 +102,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument(
-        "--model_type", type=str, default="pretrained"
+        "--model_type", type=str, default="clip_L"
     )
     args = parser.parse_args()
 

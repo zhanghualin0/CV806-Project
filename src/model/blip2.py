@@ -23,7 +23,7 @@ from lavis.models.base_model import BaseModel
 from lavis.models.blip2_models.Qformer import BertConfig, BertLMHeadModel
 # from lavis.models.eva_vit import create_eva_vit_g
 from lavis.models.eva_vit import VisionTransformer
-# from lavis.models.clip_vit import create_clip_vit_L
+from lavis.models.clip_vit import create_clip_vit_L
 from transformers import BertTokenizer
 from functools import partial
 
@@ -257,28 +257,28 @@ def create_eva_vit_g(img_size=224,drop_path_rate=0.4,use_checkpoint=False,precis
         convert_weights_to_fp16(model)
     return model
 
-def create_clip_vit_L(img_size=224,use_checkpoint=False,precision="fp16"):
-    model = VisionTransformer(
-            input_resolution=img_size,
-            patch_size=14,
-            width=1024,
-            layers=23,
-            heads=16,
-            use_grad_checkpointing=use_checkpoint,
-        )         
-    url = "https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/clip_vit_L.pth"
-    cached_file = download_cached_file(
-        url, check_hash=False, progress=True
-    )
-    state_dict = torch.load(cached_file, map_location="cpu")    
-    interpolate_pos_embed(model,state_dict)
+# def create_clip_vit_L(img_size=224,use_checkpoint=False,precision="fp16"):
+#     model = VisionTransformer(
+#             input_resolution=img_size,
+#             patch_size=14,
+#             width=1024,
+#             layers=23,
+#             heads=16,
+#             use_grad_checkpointing=use_checkpoint,
+#         )         
+#     url = "https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/clip_vit_L.pth"
+#     cached_file = download_cached_file(
+#         url, check_hash=False, progress=True
+#     )
+#     state_dict = torch.load(cached_file, map_location="cpu")    
+#     interpolate_pos_embed(model,state_dict)
     
-    incompatible_keys = model.load_state_dict(state_dict, strict=False)
-    # print(incompatible_keys)
+#     incompatible_keys = model.load_state_dict(state_dict, strict=False)
+#     # print(incompatible_keys)
     
-    if precision == "fp16":
-        convert_weights_to_fp16(model)
-    return model
+#     if precision == "fp16":
+#         convert_weights_to_fp16(model)
+#     return model
 
 def convert_weights_to_fp16(model: nn.Module):
     """Convert applicable model parameters to fp16"""
