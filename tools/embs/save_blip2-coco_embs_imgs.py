@@ -37,7 +37,7 @@ def main(args):
     model = blip2_embs(
         pretrained="https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/blip2_finetune_coco.pth",
         vit_model="eva_clip_g",
-        img_size=364,
+        img_size=384,
         drop_path_rate=0,
         use_grad_checkpoint=False,
         vit_precision="fp32",
