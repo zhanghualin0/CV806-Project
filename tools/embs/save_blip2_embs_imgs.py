@@ -5,6 +5,8 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 from tqdm.auto import tqdm
+from torchvision import transforms
+from torchvision.transforms.functional import InterpolationMode
 
 script_path = os.path.abspath(__file__)
 script_dir = os.path.dirname(script_path)
@@ -17,12 +19,24 @@ from src.model.blip2_embs import blip2_embs # type: ignore
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+normalize = transforms.Normalize(
+    (0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)
+)
+transform = transforms.Compose(
+    [
+        transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC), # adapt to BLIP2-COCO
+        transforms.ToTensor(),
+        normalize,
+    ]
+)
+
 @torch.no_grad()
 def main(args):
     dataset = ImageDataset(
         image_dir=args.image_dir,
         img_ext=args.img_ext,
         save_dir=args.save_dir,
+        transform=transform,
     )
 
     loader = torch.utils.data.DataLoader(

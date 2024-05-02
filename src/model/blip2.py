@@ -158,14 +158,7 @@ def load_checkpoint(model, url_or_filename):
         raise RuntimeError("checkpoint url or path is invalid")
 
     state_dict = checkpoint["model"]
-    state_dict["visual_encoder.pos_embed"] = interpolate_pos_embed(
-        state_dict["visual_encoder.pos_embed"], model.visual_encoder
-    )
-    if "visual_encoder_m.pos_embed" in model.state_dict().keys():
-        state_dict["visual_encoder_m.pos_embed"] = interpolate_pos_embed(
-            state_dict["visual_encoder_m.pos_embed"], model.visual_encoder_m
-        )
-
+    
     msg = model.load_state_dict(state_dict, strict=False)
 
     # logging.info("Missing keys {}".format(msg.missing_keys))
