@@ -1,4 +1,4 @@
-modelname: blip2
+modelname: blip2-coco
 _target_: src.model.blip2_cir.blip2_cir
 
 ckpt_path: ${model.ckpt.path}

@@ -31,4 +31,4 @@ defaults:
 paths: ${machine.paths}
 
 # Flag to validate at the end of every epoch
-val: True
+val: False

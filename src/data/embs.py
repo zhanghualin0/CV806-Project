@@ -58,8 +58,9 @@ class ImageDataset(Dataset):
         img_pth = self.id2pth[video_id]
         img = Image.open(img_pth).convert("RGB")
         if self.transform:
-            print("applying transform")
             img = self.transform(img)
+        else:
+            img = transform(img)
 
         return img, video_id
 
